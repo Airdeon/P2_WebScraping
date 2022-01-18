@@ -1,44 +1,61 @@
+import os
+import re
 import requests
 import csv
-import os
 import urllib.request
 from bs4 import BeautifulSoup
+from time import time
 
-urlSite = "http://books.toscrape.com/"
-urlCatalogue = "http://books.toscrape.com/catalogue/"
+# url
+URL_SITE = "http://books.toscrape.com/"
+URL_CATALOGUE = "http://books.toscrape.com/catalogue/"
+
+# Page to scan
+NUMBER_OF_PAGE = 50
+
+# header for csv file
+EN_TETE = [
+    "product_page_url",
+    "universal_ product_code (upc)",
+    "title",
+    "price_including_tax",
+    "price_excluding_tax",
+    "number_available",
+    "product_description",
+    "category",
+    "review_rating",
+    "image_url"
+]
 
 # Link of folder
-CSV_FOLDER = 'output CSV/'
+CSV_FOLDER = 'CSV/'
 IMAGES_FOLDER = 'Images/'
 if not os.path.exists(CSV_FOLDER):
     os.mkdir(CSV_FOLDER)
 if not os.path.exists(IMAGES_FOLDER):
     os.mkdir(IMAGES_FOLDER)
 
-EN_TETE = ["product_page_url", "universal_ product_code (upc)", "title", "price_including_tax", "price_excluding_tax", "number_available", "product_description", "category", "review_rating", "image_url"]
+# start time counter
+start = time()
 
 # make a list of all product page link
 links = []
-for i in range(4):
+for i in range(NUMBER_OF_PAGE):
     # url of catalogue page
-    url_C = urlCatalogue + 'page-' + str(i+1) + '.html'
-    # Find all url of product per page 
+    url_C = URL_CATALOGUE + 'page-' + str(i+1) + '.html'
+    # Find all url of product per page
     response = requests.get(url_C)
     if response.ok:
         soupIndex = BeautifulSoup(response.text, "html.parser")
         divA = soupIndex.find_all('div', {'class': 'image_container'})
-        for l in divA:
-            a = l.find('a')
+        for i in divA:
+            a = i.find('a')
             link = a['href']
-            print(link)
-            links.append(urlCatalogue + link)
-
-print(len(links))
-
+            links.append(URL_CATALOGUE + link)
 
 # start reading all page and save data
 for i in range(len(links)):
-    print(links[i])
+    print(str(i+1) + '/' + str(len(links)))
     resultRequest = requests.get(links[i])
     if resultRequest.ok:
         soup = BeautifulSoup(resultRequest.text, "html.parser")
@@ -48,7 +65,6 @@ for i in range(len(links)):
 
         # title
         title = soup.find('h1').text
-        print(title)
 
         product_Info = soup.find_all('tr')
         upc = ""
@@ -60,27 +76,25 @@ for i in range(len(links)):
             # universal_ product_code (upc)
             if i.find('th', string='UPC'):
                 ucp = i.find('td').text
-                print(ucp)
 
             # price_including_tax
             if i.find('th', string='Price (incl. tax)'):
-                PriceTax = i.find('td').text
-                print(PriceTax)
+                PriceTax = i.find('td').text[1:]
 
             # price_excluding_tax
             if i.find('th', string='Price (excl. tax)'):
-                PriceNoTax = i.find('td').text
-                print(PriceNoTax)
+                PriceNoTax = i.find('td').text[1:]
 
             # availability
             if i.find('th', string='Availability'):
                 numberAvailableText = i.find('td').text
                 numberAvailable = int(''.join(filter(str.isdigit, numberAvailableText)))
-                print(numberAvailable)
 
         # description
-        description = soup.find("div", {"id": "product_description"}).find_next('p').text
-        print(description)
+        try:
+            description = soup.find("div", {"id": "product_description"}).find_next('p').text
+        except:
+            description = ''
 
         # review rating
         rR = soup.find("p", {"class": "star-rating"})
@@ -98,25 +112,40 @@ for i in range(len(links)):
                 real_review_rating = '5/5'
             case _:
                 real_review_rating = '1/5'
-        print(real_review_rating)
 
         # image_URL
-        i_url = soup.find("img", {'alt': title})
-        image_url = urlSite + i_url['src'][5:]
-        print(image_url)
+        try:
+            i_url = soup.find("img", {'alt': title})
+            image_url = URL_SITE + i_url['src'][5:]
+        except:
+            image_url = ''
 
         # category
         cat_style = soup.find('li', {'class': 'active'}).find_previous('a').text
-        print(cat_style)
-        
-        ligne_Csv = [productPageUrl, ucp, title, PriceTax, PriceNoTax, numberAvailable, description, cat_style, real_review_rating, image_url]
 
+        # create line for CSV file
+        ligne_Csv = [
+            productPageUrl,
+            ucp,
+            title,
+            PriceTax,
+            PriceNoTax,
+            numberAvailable,
+            description,
+            cat_style,
+            real_review_rating,
+            image_url
+        ]
+
+        # create link of CSV file and image folder
         csvlink = CSV_FOLDER + cat_style + '.csv'
         images_folder_link = IMAGES_FOLDER + cat_style + '/'
-        if len(title) > 21:
-            short_title = title[0:20].replace(':', ' ')
+        # if title is too long, make it shorter
+        title_for_link = re.sub(r"[^a-zA-Z0-9 ]", "", title) # remove all special character 
+        if len(title) > 20:
+            short_title = title_for_link[0:20]
         else:
-            short_title = title.replace(':', ' ')
+            short_title = title_for_link
         imageslink = IMAGES_FOLDER + cat_style + '/' + short_title + '.jpg'
 
         # write on csv file if exist or make it and write header before data
@@ -129,8 +158,14 @@ for i in range(len(links)):
             with open(csvlink, 'a', newline='', encoding="utf-8") as csv_file:
                 writer = csv.writer(csv_file, delimiter=',')
                 writer.writerow(ligne_Csv)
-        
+
         # save image.jpg
-        if not os.path.exists(images_folder_link):
-            os.mkdir(images_folder_link)
-        urllib.request.urlretrieve(image_url, imageslink)
+        if image_url != '':
+            if not os.path.exists(images_folder_link):
+                os.mkdir(images_folder_link)
+            urllib.request.urlretrieve(image_url, imageslink)
+
+# show statistic
+end = time()
+temps = int(end - start)
+print(str(len(links)) + ' livre récupéré en ' + str(temps) + 's')
