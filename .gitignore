@@ -2,3 +2,4 @@ env
 .vscode
 Images
 CSV
+__pycache__

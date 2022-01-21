@@ -1,10 +1,10 @@
 import os
-import re
 import requests
 import csv
-import urllib.request
 from bs4 import BeautifulSoup
 from time import time
+from webscraping.getdata import get_image_and_url, get_rating, get_product_info
+from webscraping.linkfinder import links_finder
 
 # url
 URL_SITE = "http://books.toscrape.com/"
@@ -39,19 +39,7 @@ if not os.path.exists(IMAGES_FOLDER):
 start = time()
 
 # make a list of all product page link
-links = []
-for i in range(NUMBER_OF_PAGE):
-    # url of catalogue page
-    url_C = URL_CATALOGUE + 'page-' + str(i+1) + '.html'
-    # Find all url of product per page
-    response = requests.get(url_C)
-    if response.ok:
-        soupIndex = BeautifulSoup(response.text, "html.parser")
-        divA = soupIndex.find_all('div', {'class': 'image_container'})
-        for i in divA:
-            a = i.find('a')
-            link = a['href']
-            links.append(URL_CATALOGUE + link)
+links = links_finder(URL_CATALOGUE)
 
 # start reading all page and save data
 for i in range(len(links)):
@@ -60,93 +48,46 @@ for i in range(len(links)):
     if resultRequest.ok:
         soup = BeautifulSoup(resultRequest.text, "html.parser")
 
-        # product_page_url
+        # get product_page_url
         productPageUrl = links[i]
 
-        # title
+        # get title
         title = soup.find('h1').text
 
-        product_Info = soup.find_all('tr')
-        upc = ""
-        PriceTax = ""
-        PriceNoTax = ""
-        numberAvailable = ""
+        # get product_info in a list
+        product_Info = get_product_info(soup)
 
-        for i in product_Info:
-            # universal_ product_code (upc)
-            if i.find('th', string='UPC'):
-                ucp = i.find('td').text
-
-            # price_including_tax
-            if i.find('th', string='Price (incl. tax)'):
-                PriceTax = i.find('td').text[1:]
-
-            # price_excluding_tax
-            if i.find('th', string='Price (excl. tax)'):
-                PriceNoTax = i.find('td').text[1:]
-
-            # availability
-            if i.find('th', string='Availability'):
-                numberAvailableText = i.find('td').text
-                numberAvailable = int(''.join(filter(str.isdigit, numberAvailableText)))
-
-        # description
-        try:
+        # get description
+        if soup.find("div", {"id": "product_description"}):
             description = soup.find("div", {"id": "product_description"}).find_next('p').text
-        except:
+        else:
             description = ''
 
-        # review rating
-        rR = soup.find("p", {"class": "star-rating"})
-        review_rating = rR['class']
-        match review_rating[1]:
-            case 'One':
-                real_review_rating = '1/5'
-            case 'Two':
-                real_review_rating = '2/5'
-            case 'Three':
-                real_review_rating = '3/5'
-            case 'Four':
-                real_review_rating = '4/5'
-            case 'Five':
-                real_review_rating = '5/5'
-            case _:
-                real_review_rating = '1/5'
+        # get review rating
+        review_rating = get_rating(soup)
 
-        # image_URL
-        try:
-            i_url = soup.find("img", {'alt': title})
-            image_url = URL_SITE + i_url['src'][5:]
-        except:
-            image_url = ''
-
-        # category
+        # get category
         cat_style = soup.find('li', {'class': 'active'}).find_previous('a').text
+
+        # get image url and save it
+        image_url = get_image_and_url(soup, cat_style, title, IMAGES_FOLDER, URL_SITE)
 
         # create line for CSV file
         ligne_Csv = [
             productPageUrl,
-            ucp,
+            product_Info[0],
             title,
-            PriceTax,
-            PriceNoTax,
-            numberAvailable,
+            product_Info[1],
+            product_Info[2],
+            product_Info[3],
             description,
             cat_style,
-            real_review_rating,
+            review_rating,
             image_url
         ]
 
-        # create link of CSV file and image folder
+        # create link of CSV file
         csvlink = CSV_FOLDER + cat_style + '.csv'
-        images_folder_link = IMAGES_FOLDER + cat_style + '/'
-        # if title is too long, make it shorter
-        title_for_link = re.sub(r"[^a-zA-Z0-9 ]", "", title) # remove all special character 
-        if len(title) > 20:
-            short_title = title_for_link[0:20]
-        else:
-            short_title = title_for_link
-        imageslink = IMAGES_FOLDER + cat_style + '/' + short_title + '.jpg'
 
         # write on csv file if exist or make it and write header before data
         if not os.path.exists(csvlink):
@@ -158,12 +99,6 @@ for i in range(len(links)):
             with open(csvlink, 'a', newline='', encoding="utf-8") as csv_file:
                 writer = csv.writer(csv_file, delimiter=',')
                 writer.writerow(ligne_Csv)
-
-        # save image.jpg
-        if image_url != '':
-            if not os.path.exists(images_folder_link):
-                os.mkdir(images_folder_link)
-            urllib.request.urlretrieve(image_url, imageslink)
 
 # show statistic
 end = time()
