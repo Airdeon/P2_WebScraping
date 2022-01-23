@@ -24,5 +24,6 @@ def links_finder(url):
             page += 1
         else:
             link_left = False
-            print('end')
+            print('nombre de liens : ' + str(len(links)))
+
     return links
