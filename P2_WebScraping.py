@@ -32,11 +32,9 @@ if not os.path.exists(CSV_FOLDER):
 if not os.path.exists(IMAGES_FOLDER):
     os.mkdir(IMAGES_FOLDER)
 
-# start time counter
-start = time()
-
 # make a list of all product page link
 links = links_finder(URL_CATALOGUE)
+
 
 def main():
     # start reading all page and save data
@@ -100,6 +98,7 @@ def main():
 
 if __name__ == "__main__":
     start = time() # start time counter
+    links = links_finder(URL_CATALOGUE) # make a list of all product page link
     main() # launch main program
     end = time() # stop time counter
     # show statistic
